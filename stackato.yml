@@ -1,0 +1,13 @@
+name: calipso-cms
+
+mem: 128M
+
+framework:
+  type: node
+
+services:
+  ${name}-db: mongodb
+
+hooks:
+  pre-staging:
+    - npm install express
