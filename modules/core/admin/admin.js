@@ -40,6 +40,9 @@ function route(req, res, module, app, next) {
  */
 function init(module, app, next) {
 
+  // Initialize the database to $MONGODB_URL
+  calipso.config.set('database:uri', process.env.MONGODB_URL)
+
   // Initialise administration events - enabled for hook.io
   calipso.e.addEvent('CONFIG_UPDATE', {enabled:true});
 
