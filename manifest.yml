@@ -1,5 +1,6 @@
 applications:
 - name: calipso
+  docker_image: stackatoapps/calipso:latest
   mem: 128M
   services:
     ${name}-db:
