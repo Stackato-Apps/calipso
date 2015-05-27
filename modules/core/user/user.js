@@ -26,6 +26,7 @@ function route(req, res, module, app, next) {
   // Menu
   res.menu.admin.addMenuItem(req, {name:'Security', path:'admin/security', weight:5, url:'', description:'Users, Roles & Permissions ...', permit:aPerm, icon:"icon-locked-2" });
   res.menu.admin.addMenuItem(req, {name:'Users', path:'admin/security/users', weight:10, url:'/user/list', description:'Manage users ...', permit:aPerm, icon:"icon-users" });
+  res.menu.admin.addMenuItem(req, {name:'Roles', path:'admin/security/roles', weight:15, url:'/admin/role/list', description:'Manage roles ...', permit:aPerm, icon:"icon-users" });
   res.menu.admin.addMenuItem(req, {name:'Logout', path:'admin/logout', weight:100, url:'/user/logout', description:'Logout', permit:aPerm, icon:"icon-upload-3" });
 
   // Router
@@ -421,7 +422,11 @@ function updateUserForm(req, res, template, block, next) {
   }
 
   User.findOne({username:username}, function (err, u) {
-
+    if (!u || err) {
+      req.flash('error', req.t('There was an error refering to user account.'));
+      res.redirect('/user/list');
+      return next();
+    }
     // Allow admins to register other admins
     if (req.session.user && req.session.user.isAdmin) {
 
@@ -469,7 +474,7 @@ function lockUser(req, res, template, block, next) {
   User.findOne({username:username}, function (err, u) {
 
     if (err || !u) {
-      req.flash('error', req.t('There was an error unlocking that user account.'));
+      req.flash('error', req.t('There was an error locking that user account.'));
       res.redirect('/user/list');
       return;
     }
@@ -478,12 +483,12 @@ function lockUser(req, res, template, block, next) {
     calipso.e.pre_emit('USER_LOCK', u);
     u.save(function (err) {
       if (err) {
-        req.flash('error', req.t('There was an error unlocking that user account.'));
+        req.flash('error', req.t('There was an error locking that user account.'));
       } else {
         calipso.e.post_emit('USER_LOCK', u);
         req.flash('info', req.t('Account locked.'));
       }
-      res.redirect('/user/profile/' + username);
+      res.redirect('/user/profile/' + encodeURIComponent(username));
     });
 
   });
@@ -515,7 +520,7 @@ function unlockUser(req, res, template, block, next) {
         calipso.e.post_emit('USER_UNLOCK', u);
         req.flash('info', req.t('Account unlocked.'));
       }
-      res.redirect('/user/profile/' + username);
+      res.redirect('/user/profile/' + encodeURIComponent(username));
     });
 
   });
@@ -686,7 +691,7 @@ function updateUserProfile(req, res, template, block, next) {
               req.flash('error', req.t('Could not save user because {msg}.', {msg:err.message}));
               if (res.statusCode != 302) {
                 // Redirect to old page
-                res.redirect('/user/profile/' + username + '/edit');
+                res.redirect('/user/profile/' + encodeURIComponent(username) + '/edit');
                 return;
               }
 
@@ -705,7 +710,7 @@ function updateUserProfile(req, res, template, block, next) {
               }
 
               // Redirect to new page
-              res.redirect('/user/profile/' + u.username);
+              res.redirect('/user/profile/' + encodeURIComponent(u.username));
               return;
 
             }
@@ -733,31 +738,33 @@ function loginUser(req, res, template, block, next) {
 
       User.findOne({username:username}, function (err, user) {
         if (user) {
-          calipso.lib.crypto.check(form.user.password, user.hash, function (err, ok) {
-            if (user && !user.locked && ok) {
-              found = true;
-              calipso.e.post_emit('USER_LOGIN', user);
-              createUserSession(req, res, user, function (err) {
-                if (err) {
-                  calipso.error("Error saving session: " + err);
-                }
-              });
-            }
+          calipso.lib.crypto.check(form.user.password, user.hash, finish);
+        } else {
+          finish(null, false);
+        }
+        function finish(err, ok) {
+          if (user && !user.locked && ok) {
+            found = true;
+            calipso.e.post_emit('USER_LOGIN', user);
+            createUserSession(req, res, user, function (err) {
+              if (err) {
+                calipso.error("Error saving session: " + err);
+              }
+            });
+          }
 
-            if (!found) {
-              req.flash('error', req.t('You may have entered an incorrect username or password, please try again.  If you still cant login after a number of tries your account may be locked, please contact the site administrator.'));
-            }
+          if (!found) {
+            req.flash('error', req.t('You may have entered an incorrect username or password, please try again.  If you still cant login after a number of tries your account may be locked, please contact the site administrator.'));
+          }
 
-            if (res.statusCode != 302) {
-              res.redirect(calipso.config.get('server:loginPath') || 'back');
-              return;
-            }
-            next();
+          if (res.statusCode != 302) {
+            res.redirect(calipso.config.get('server:loginPath') || 'back');
             return;
-          });
+          }
+          next();
+          return;
         }
       });
-
     }
   });
 
@@ -915,7 +922,7 @@ function registerUser(req, res, template, block, next) {
             calipso.e.post_emit('USER_CREATE', u);
             if (!res.noRedirect) {
               req.flash('info', req.t('Profile created, you can now login using this account.'));
-              res.redirect('/user/profile/' + u.username);
+              res.redirect('/user/profile/' + encodeURIComponent(u.username));
               return;
             }
           }
@@ -1127,9 +1134,9 @@ function listUsers(req, res, template, block, next) {
 function listRoles(req, res, template, block, next) {
 
   // Re-retrieve our object
-  var Role = calipso.db.model('Role');
-
-  res.menu.adminToolbar.addMenuItem({name:'Register New Role', path:'new', url:'/admin/role/register', description:'Register new role ...', security:[], icon:"icon-neutral"});
+  var Role = calipso.db.model('Role'),
+    aPerm = calipso.permission.Helper.hasPermission("admin:role");
+  res.menu.adminToolbar.addMenuItem(req,{name:'Register New Role', path:'new', url:'/admin/role/register', description:'Register new role ...', security:[], permit:aPerm, icon:"icon-neutral"});
 
   var format = req.moduleParams.format ? req.moduleParams.format : 'html';
   var from = req.moduleParams.from ? parseInt(req.moduleParams.from) - 1 : 0;
@@ -1172,7 +1179,7 @@ function listRoles(req, res, template, block, next) {
           }
         };
 
-        var tableHtml = calipso.table.render(table, req);
+        var tableHtml = calipso.table.render(req, table);
 
         calipso.theme.renderItem(req, res, tableHtml, block, null, next);
 
@@ -1211,28 +1218,46 @@ function install(next) {
         var adminUser = calipso.data.adminUser;
 
         // Create a new user
-        var admin = new User({
-          username:adminUser.username,
-          fullname:adminUser.fullname,
-          email:adminUser.email,
-          language:adminUser.language,
-          about:'',
-          roles:['Administrator']
-        });
-        calipso.lib.crypto.hash(adminUser.password, calipso.config.get('session:secret'), function (err, hash) {
-          if (err) {
-            return self()(err);
+        User.findOne({username:adminUser.username}, function (err, admin) {
+          if (admin) {
+            admin.fullname = adminUser.fullname;
+//            admin.email = adminUser.email; // This is dangerous if trying to reset the password
+// Since e-mail has a unique index if the user happens to type the wrong e-mail during a reinstall
+// this update will fail and they won't be able to login.
+            admin.language = adminUser.language;
+            if (!admin.roles) {
+              admin.roles = ['Administrator'];
+            } else if (admin.roles.indexOf('Administrator') === -1) {
+              admin.roles.push('Administrator');
+            }
+          } else {
+            admin = new User({
+              username:adminUser.username,
+              fullname:adminUser.fullname,
+              email:adminUser.email,
+              language:adminUser.language,
+              about:'',
+              roles:['Administrator']
+            });
           }
-          admin.hash = hash;
-          admin.save(self());
-        }),
-
-          // Delete this now to ensure it isn't hanging around;
-          delete calipso.data.adminUser;
+          calipso.lib.crypto.hash(adminUser.password, calipso.config.get('session:secret'), function (err, hash) {
+            if (err) {
+              console.log(err);
+              return self(err);
+            }
+            admin.hash = hash;
+            admin.save(function (err) {
+              if (err) console.log(err);
+              self(err);
+            });
+          });
+        });
+        // Delete this now to ensure it isn't hanging around;
+        delete calipso.data.adminUser;
 
       } else {
         // Fatal error
-        self()(new Error("No administrative user details provided through login process!"));
+        self(new Error("No administrative user details provided through login process!"));
       }
 
     },

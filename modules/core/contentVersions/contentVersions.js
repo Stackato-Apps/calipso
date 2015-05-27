@@ -270,7 +270,7 @@ function listVersions(req, res, template, block, next) {
 
   // Initialise the block based on our content
   ContentVersion.find(query)
-    .sort('updated', -1)
+    .sort('-updated')
     .find(function (err, versions) {
 
       // Render the item into the response
@@ -327,7 +327,7 @@ function revertVersion(req, res, template, block, next) {
       content.set("version", 'Yes');
 
       content.save(function (err) {
-        res.redirect('/content/show/' + contentId);
+        res.redirect('/content/show/' + encodeURIComponent(contentId));
         next();
       });
 

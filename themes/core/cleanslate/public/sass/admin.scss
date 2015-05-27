@@ -113,6 +113,14 @@ h1 {
 	letter-spacing: -2px;
 }
 
+// don't do text transformation on mailto
+// links because they are likely to have
+// the email address in the label and it
+// looks like an error
+a[href^="mailto:"] {
+	text-transform: initial;
+}
+
 // 3. Layout
 // ----------------------------------------//
 
@@ -499,6 +507,12 @@ ul.tabs li.active a:hover {
 	padding: $borderRadiusLarge 0 0;
 }
 
+.field-settings > .form-item {
+  display: inline-block;
+  vertical-align: top;
+  padding: .5em;
+}
+
 .fieldset-fields {
 	clear: both;
 	margin-bottom: $margin;
@@ -760,7 +774,6 @@ form .section:first-child {
 /* messages [info, success, warning, error] */
 #messages {
 	clear: both;
-	position: absolute;
 	top: 60px;
 	left: $marginLarge;
 	border-radius: $borderRadiusLarge;
@@ -777,7 +790,6 @@ form .section:first-child {
 .error {
 	border: 1px solid;
 	margin: 0 0 $marginLarge;
-	padding: $borderRadiusLarge $margin;
 	background-repeat: no-repeat;
 	background-position: $borderRadiusLarge 6px;
 

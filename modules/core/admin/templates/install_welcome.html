@@ -9,13 +9,35 @@
     </p>
 
     <ol>
-        <li><%= t("Setup Database") %></li>
+        <% if (needMongo) { %>
+          <li><%= t("Setup Database") %></li>
+        <% } %>
         <li><%= t("Create Admin") %></li>
         <li><%= t("Add Features (Modules)") %></li>
     </ol>
 
+    <p></p>
+    
+    <%- form %>
+
     <footer class="admin-install-links row">
-        <a class="step_1 button next" href="?installStep=mongodb"><%= t("Let's Begin") %></a>
+        <a id="form-submit" class="submit" href="#"><%= t("Let's Start") %></a>
     </footer>
 
+    <script>
+        (function L() {
+
+            if (window.jQuery) {
+
+                $('#form-submit').click(function (e) {
+                    e.preventDefault();
+                    $('#install-welcome-form').submit();
+                });
+            } else {
+                setTimeout(L, 50);
+            }
+
+        })();
+    </script>
+        
 </article>

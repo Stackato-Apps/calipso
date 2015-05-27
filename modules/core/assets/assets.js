@@ -552,7 +552,7 @@ function init(module, app, next) {
           }
           function rootSnarfer(info) {
             realContent(info, null, true, snarfBucketContent, function () {
-              Asset.find({isfolder:true}).limit(10000).run(function (e, folders) {
+              Asset.find({isfolder:true}).limit(10000).exec(function (e, folders) {
                 if (e || folders.length == 0) {
                   doNext();
                   return;
@@ -599,14 +599,14 @@ function init(module, app, next) {
             if (err) {
               return callback(err, null);
             }
-            var query = Asset.find({folder:project._id}).sort('isfolder', -1).sort('title', 1);
+            var query = Asset.find({folder:project._id}).sort('-isfolder title');
             callback(err, query);
           });
         },
         deleteAsset:function (path, author, callback) {
           var Asset = calipso.db.model('Asset');
           var rootFolder = null;
-          Asset.findOne({alias:path}).populate('folder').run(function (err, asset) {
+          Asset.findOne({alias:path}).populate('folder').exec(function (err, asset) {
             if (err) {
               return callback(err, null);
             }
@@ -783,7 +783,7 @@ function init(module, app, next) {
         hideAsset:function (path, author, callback) {
           var Asset = calipso.db.model('Asset');
           var rootFolder = null;
-          Asset.findOne({alias:path}).populate('folder').run(function (err, asset) {
+          Asset.findOne({alias:path}).populate('folder').exec(function (err, asset) {
             if (err) {
               return callback(err, null);
             }
@@ -825,7 +825,7 @@ function init(module, app, next) {
           var path = [];
 
           function searchFolder(folder) {
-            Asset.findOne({alias:folder, isfolder:true}).populate('folder').run(function (err, folderAsset) {
+            Asset.findOne({alias:folder, isfolder:true}).populate('folder').exec(function (err, folderAsset) {
               if (!folderAsset || err) {
                 return callback(new Error('Unable to find folder ' + folder), null);
               }
@@ -1076,7 +1076,7 @@ function init(module, app, next) {
                 return callback(new Error('unable to find parent folder ' + parentFolder), null);
               }
               // Search for the asset with this alias.
-              Asset.findOne({alias:path, folder:folder._id}).run(function (err, asset) {
+              Asset.findOne({alias:path, folder:folder._id}).exec(function (err, asset) {
                 if (err) {
                   return callback(err, asset);
                 }
@@ -1702,7 +1702,7 @@ function addFolder(req, res, template, block, next) {
           calipso.form.process(req, function (form) {
             if (form) {
               calipso.lib.assets.createAsset({path:alias + form.name + '/', author:req.session.user.username}, function (err, asset) {
-                res.redirect('/asset/' + alias + form.name + '/');
+                res.redirect('/asset/' + encodeURIComponent(alias + form.name) + '/');
               });
             } else {
               req.flash('info', req.t('Woah there, slow down. You should stick with the forms ...'));
@@ -1926,7 +1926,7 @@ function editAssetForm(req, res, template, block, next) {
 
   var aPerm = calipso.permission.Helper.hasPermission("admin:user");
 
-  Asset.findById(id).populate('folder').run(function (err, c) {
+  Asset.findById(id).populate('folder').exec(function (err, c) {
     if (err || c === null) {
       // TODO : REDIRECT TO 404
       res.statusCode = 404;
@@ -2035,7 +2035,7 @@ function updateAsset(req, res, template, block, next) {
                         res.redirect(returnTo);
                       } else {
                         // use the reference to the originally id deifned by req.moduleParams.id
-                        res.redirect('/s3/' + id);
+                        res.redirect('/s3/' + encodeURIComponent(id));
                       }
                       next();
                     });
@@ -2064,7 +2064,7 @@ function deleteAsset(req, res, template, block, next) {
       var returnTo = form.returnTo ? form.returnTo : "";
       var id = req.moduleParams.id;
 
-      Asset.findById(id).populate('folder').run(function (err, c) {
+      Asset.findById(id).populate('folder').exec(function (err, c) {
         if (c) {
           calipso.lib.assets.checkPermission(c.alias, req.session.user.username, 'delete', function (err, allowed) {
             if (!allowed) {
@@ -2082,7 +2082,7 @@ function deleteAsset(req, res, template, block, next) {
               }
               req.flash('info', req.t('Asset deleted'));
               if (c.folder) {
-                res.redirect('/assets/' + c.folder.id);
+                res.redirect('/assets/' + encodeURIComponent(c.folder.id));
               } else {
                 res.redirect('/assets/');
               }
@@ -2232,7 +2232,7 @@ function listAssets(req, res, template, block, next) {
     Asset.findOne({$or:[
       {alias:alias, isfolder:isfolder},
       {_id:productionId}
-    ]}).populate('folder').run(function (err, folder) {
+    ]}).populate('folder').exec(function (err, folder) {
         function cloneAsset(asset, user) {
           var clone = {};
           if (!asset.isfolder) {
@@ -2311,7 +2311,7 @@ function listAssets(req, res, template, block, next) {
                     return populateChildren(parent, folder, callback);
                   }
                 }
-                Asset.find({folder:folder.guid}).sort('customSort', 1, 'title', 1).run(function (err, assets) {
+                Asset.find({folder:folder.guid}).sort('customSort title').exec(function (err, assets) {
                   if (err) {
                     return next(err);
                   }

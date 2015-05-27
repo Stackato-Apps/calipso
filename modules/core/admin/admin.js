@@ -4,12 +4,15 @@
 var rootpath = process.cwd() + '/',
   path = require('path'),
   calipso = require(path.join(rootpath, 'lib/calipso')),
+  crypto = require("crypto"),
 
   exports = module.exports = {
     init:init,
     route:route,
     first:true // Admin must run before all else
   };
+
+var readonlyModules = ["admin", "user", "content", "contentTypes", "permissions", "checkbox", "field", "hidden", "text"]; // Modules that cant be disabled
 
 /*
  * Router
@@ -26,8 +29,11 @@ function route(req, res, module, app, next) {
   res.menu.admin.addMenuItem(req, {name:'Core', path:'admin/core', url:'/admin', description:'Manage core settings for Calipso ...', permit:corePermit, icon:"icon-wrench"});
   res.menu.admin.addMenuItem(req, {name:'Configuration', path:'admin/core/config', url:'/admin/core/config', description:'Core configuration ...', permit:corePermit, icon:"icon-wrench"});
   res.menu.admin.addMenuItem(req, {name:'View Languages', path:'admin/core/languages', url:'/admin/core/languages', description:'Languages ...', permit:corePermit, icon:"icon-airplane"});
-  res.menu.admin.addMenuItem(req, {name:'View Cache', path:'admin/core/cache', url:'/admin/core/cache', description:'Cache ...', permit:cachePermit, icon:"icon-view-2"});
-  res.menu.admin.addMenuItem(req, {name:'Clear Cache', path:'admin/core/cache/clear', url:'/admin/core/cache/clear', description:'Clear Cache ...', permit:cachePermit, icon:"icon-refresh"});
+  if (typeof calipso.cache.clear === "function") { // cache module not activated, deactivate menu item (will appear - then fail - if permission exist and module deactivated)
+    // WTF Thought : cache module related code should not be here at all
+    res.menu.admin.addMenuItem(req, {name:'View Cache', path:'admin/core/cache', url:'/admin/core/cache', description:'Cache ...', permit:cachePermit, icon:"icon-view-2"});
+    res.menu.admin.addMenuItem(req, {name:'Clear Cache', path:'admin/core/cache/clear', url:'/admin/core/cache/clear', description:'Clear Cache ...', permit:cachePermit, icon:"icon-refresh"});
+  }
   res.menu.admin.addMenuItem(req, {name:'Modules', path:'admin/modules', url:'/admin', description:'Manage module settings ...', permit:modulePermit, icon:"icon-layout"});
 
   // Routing and Route Handler
@@ -71,6 +77,11 @@ function init(module, app, next) {
         permit:corePermit
       }, this.parallel());
 
+      module.router.addRoute('GET /admin/config.json', downloadConfig, {
+        admin:true,
+        permit:corePermit
+      }, this.parallel());
+
       // Core configuration
       module.router.addRoute('GET /admin/core/config', coreConfig, {
         block:'admin.show',
@@ -82,22 +93,22 @@ function init(module, app, next) {
         admin:true,
         permit:corePermit
       }, this.parallel());
-
-      module.router.addRoute('GET /admin/core/cache', showCache, {
-        admin:true,
-        template:'cache',
-        block:'admin.cache',
-        permit:cachePermit
-      }, this.parallel());
-
-      module.router.addRoute('GET /admin/core/cache/clear', clearCache, {
-        admin:true,
-        template:'cache',
-        block:'admin.cache',
-        permit:cachePermit
-      }, this.parallel());
-
-      module.router.addRoute('GET /admin/core/languages', showLanguages, {
+      if (typeof calipso.cache.clear === "function") { // same cause same reason (cf WTF)
+        module.router.addRoute('GET /admin/core/cache', showCache, {
+          admin:true,
+          template:'cache',
+          block:'admin.cache',
+          permit:cachePermit
+        }, this.parallel());
+  
+        module.router.addRoute('GET /admin/core/cache/clear', clearCache, {
+          admin:true,
+          template:'cache',
+          block:'admin.cache',
+          permit:cachePermit
+        }, this.parallel());
+      }
+      module.router.addRoute('GET /admin/core/languages', showLanguages, { 
         admin:true,
         template:'languages',
         block:'admin.languages',
@@ -118,7 +129,9 @@ function init(module, app, next) {
       // Default installation routers - only accessible in install mode
       module.router.addRoute('GET /admin/install', install, null, this.parallel());
       module.router.addRoute('POST /admin/install', install, null, this.parallel());
-      module.router.addRoute('POST /admin/installTest/mongo', installMongoTest, null, this.parallel());
+      if (!process.env.MONGO_URI) {
+        module.router.addRoute('POST /admin/installTest/mongo', installMongoTest, null, this.parallel());
+      }
       module.router.addRoute('POST /admin/installTest/user', installUserTest, null, this.parallel());
 
     }, function done() {
@@ -189,6 +202,7 @@ function showLanguages(req, res, template, block, next) {
 
 }
 
+var installPass = crypto.randomBytes(25).toString('hex');
 /**
  * Installation routine, this is triggered by the install flag being set
  * in the configuration, which is detected in the core routing function
@@ -224,11 +238,15 @@ function install(req, res, template, block, next) {
       }
       // Override install step
       installStep = form.installStep
+      if (form.installPassword !== installPass) {
+        installStep = 'welcome';
+      }
     }
-
+    
     // Process the installation
     switch (installStep) {
       case "welcome":
+        console.log('Installation Password: "' + installPass + '" (inside quotes)');
         installWelcome(req, res, localNext);
         break;
       case "mongodb":
@@ -281,8 +299,24 @@ function installWelcome(req, res, next) {
 
   // Manually grab the template
   var template = calipso.modules.admin.templates.install_welcome;
-  calipso.theme.renderItem(req, res, template, 'admin.install.welcome', {}, next);
 
+  var installPassword = {id:'install-welcome-form', title:'', type:'form', method:'POST', action:'/admin/install',
+    fields:[
+      {label:'Installation Password', name:'installPassword', cls:'database-uri', type:'text', description:'Enter the Installation Password output by calipso during startup. Check log file.', required:true},
+      {label:'', name:'installStep', type:'hidden'}
+    ],
+    buttons:[]}; // Submitted via template
+
+  var formValues = {
+    install:{
+      password:''
+    },
+    'installStep': process.env.MONGO_URI ? 'user' : 'mongodb'
+  }
+
+  calipso.form.render(installPassword, formValues, req, function (form) {
+    calipso.theme.renderItem(req, res, template, 'admin.install.welcome', {form:form, needMongo:!process.env.MONGO_URI}, next);
+  });
 }
 
 /**
@@ -297,7 +331,8 @@ function installMongo(req, res, next) {
   var mongoForm = {id:'install-mongo-form', title:'', type:'form', method:'POST', action:'/admin/install',
     fields:[
       {label:'MongoDB URI', name:'database:uri', cls:'database-uri', type:'text', description:'Enter the database URI, in the form: mongodb://servername:port/database', required:true, placeholder:"mongodb://servername:port/database"},
-      {label:'', name:'installStep', type:'hidden'}
+      {label:'', name:'installStep', type:'hidden'},
+      {label:'', name:'installPassword', type:'hidden'}
     ],
     buttons:[]}; // Submitted via template
 
@@ -305,7 +340,8 @@ function installMongo(req, res, next) {
     database:{
       uri:calipso.config.get('database:uri')
     },
-    'installStep':'user'
+    'installStep':'user',
+    installPassword: installPass
   }
 
   calipso.form.render(mongoForm, formValues, req, function (form) {
@@ -371,7 +407,8 @@ function installUser(req, res, next) {
       {label:'Password', name:'user[password]', cls:'password', type:'password', required:true, placeholder:"Password"},
       {label:'Repeat Password', name:'user[check_password]', cls:'check_password', type:'password', required:true, placeholder:"Repeat Password"},
       {label:'', name:'installStep', type:'hidden'},
-      {label:'', name:'userStep', type:'hidden'}
+      {label:'', name:'userStep', type:'hidden'},
+      {label:'', name:'installPassword', type:'hidden'}
     ],
     buttons:[]
   };
@@ -379,11 +416,12 @@ function installUser(req, res, next) {
   var formValues = {
     user:(calipso.data.adminUser || {}), // Store here during install process
     'userStep':true,
-    'installStep':'modules'
+    'installStep':'modules',
+    installPassword: installPass
   }
 
   calipso.form.render(userForm, formValues, req, function (form) {
-    calipso.theme.renderItem(req, res, template, 'admin.install.user', {form:form}, next);
+    calipso.theme.renderItem(req, res, template, 'admin.install.user', {form:form,needMongo:!process.env.MONGO_URI}, next);
   });
 
 }
@@ -446,7 +484,8 @@ function installModules(req, res, next) {
   // Create the form
   var moduleForm = {id:'install-modules-form', title:'', type:'form', method:'POST', action:'/admin/install',
     fields:[
-      {label:'', name:'installStep', type:'hidden'}
+      {label:'', name:'installStep', type:'hidden'},
+      {label:'', name:'installPassword', type:'hidden'}
     ],
     buttons:[]}; // Submitted via template
 
@@ -455,34 +494,18 @@ function installModules(req, res, next) {
 
   // Defaults
   var formValues = {
-    modules:{
-      admin:{
-        enabled:true
-      },
-      content:{
-        enabled:true
-      },
-      contentTypes:{
-        enabled:true
-      },
-      user:{
-        enabled:true
-      },
-      permissions:{
-        enabled:true
-      },
-      taxonomy:{
-        enabled:true
-      },
-      tagcloud:{
-        enabled:true
-      }
-    },
-    installStep:'finalise'
+    modules:{},
+    installStep:'finalise',
+    installPassword:installPass
   };
+  readonlyModules.forEach(function(e) {
+    formValues.modules[e] = {
+      enabled:true
+    };
+  });
 
   calipso.form.render(moduleForm, formValues, req, function (form) {
-    calipso.theme.renderItem(req, res, template, 'admin.install.modules', {form:form}, next);
+    calipso.theme.renderItem(req, res, template, 'admin.install.modules', {form:form,needMongo:!process.env.MONGO_URI}, next);
   });
 
 }
@@ -512,7 +535,6 @@ function doInstallation(req, res, next) {
         calipso.reloadConfig("ADMIN_INSTALL", calipso.config, this);
       },
       function installModules() {
-
         // TODO - this should just be part of enabling them the first time!
 
         var group = this.group();
@@ -554,6 +576,34 @@ function showAdmin(req, res, template, block, next) {
 
 }
 
+function downloadConfig(req, res, template, block, next) {
+  if (process.env.MONGO_URI) {
+    var Conf = calipso.db.model('Conf');
+    Conf.findOne({environment:calipso.config.env}, function (err, conf) {
+      if (err) return next(err);
+      res.format = 'json';
+      res.statusCode = 200;
+      conf = conf.configuration;
+      res.send(conf);
+      next();
+    });
+  } else {
+    fs.readFile(calipso.config.file, function (err, data) {
+      if (err) return next(err);
+      try {
+        config = JSON.parse(data);
+      }
+      catch (e) {
+        return next(e);
+      }
+      res.format = 'json';
+      res.statusCode = 200;
+      res.send(config);
+      next();
+    });
+  }
+}
+
 /**
  * Show the current configuration
  * TODO Refactor this to a proper form
@@ -564,14 +614,16 @@ function coreConfig(req, res, template, block, next) {
   calipso.data.adminThemes = []; // TODO
   for (var themeName in calipso.availableThemes) {
     var theme = calipso.availableThemes[themeName];
-    if (theme.about.type === "full" || theme.about.type === "frontend") {
-      calipso.data.themes.push(themeName);
+    if (theme.about && theme.about.type) {
+      if (theme.about.type === "full" || theme.about.type === "frontend") {
+        calipso.data.themes.push(themeName);
+      }
+      if (theme.about.type === "full" || theme.about.type === "admin") {
+        calipso.data.adminThemes.push(themeName);
+      }
     }
-    if (theme.about.type === "full" || theme.about.type === "admin") {
-      calipso.data.adminThemes.push(themeName);
-    }
-    if (!theme.about.type) {
-      console.error("Theme " + themeName + " not enabled due to missing type.");
+    else {
+      calipso.warn("Theme " + themeName + " not enabled due to missing type.  Is theme.json valid JSON?");
     }
   }
 
@@ -740,6 +792,7 @@ function coreConfig(req, res, template, block, next) {
                 label:'Enable password authentication and registration',
                 type:'checkbox',
                 name:'server:authentication:password',
+                defaultValue:true,
                 description:'Please make sure you have made an external user (google, facebook or twitter an admin account) so you don\'t lose access to your system.'
               },
               {
@@ -962,6 +1015,12 @@ function coreConfig(req, res, template, block, next) {
         type:'button',
         href:'/admin',
         value:'Cancel'
+      },
+      {
+        name:'download',
+        type:'button',
+        href:'/admin/config.json',
+        value:'Download JSON'
       }
     ]
   };
@@ -1090,7 +1149,7 @@ function saveModulesConfig(req, res, template, block, next) {
           if (err) {
 
             req.flash('error', req.t('Could not save the updated configuration, there was an error: ' + err.message));
-            res.redirect('/admin/modules?module=' + moduleName);
+            res.redirect('/admin/modules?module=' + encodeURIComponent(moduleName));
 
           } else {
 
@@ -1124,7 +1183,6 @@ function saveModulesConfig(req, res, template, block, next) {
  */
 function createModuleFields(formFields) {
 
-  var readonlyModules = ["admin", "user", "content", "contentTypes", "permissions"]; // Modules that cant be disabled
   var tempModuleFields = {};
 
   // load up the tempModuleFields (according to module category)
@@ -1214,6 +1272,7 @@ function saveAdmin(req, res, template, block, next) {
 
             req.flash('error', req.t('Could not save the updated configuration, there was an error: ' + err.message));
             res.redirect('/admin/core/config');
+            next();
 
           } else {
 

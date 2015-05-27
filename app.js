@@ -169,7 +169,7 @@ function calipsoFindOrCreateUser(user, sess, promise) {
 // Local App Variables
 var path = rootpath,
   theme = 'default',
-  port = process.env.PORT || 3000;
+  port = (process.env.PORT && parseInt(process.env.PORT)) || 3000;
 
 /**
  * Catch All exception handler
@@ -202,7 +202,7 @@ function bootApplication(cluster, next) {
     }
 
     // Default Theme
-    calipso.defaultTheme = app.config.get('themes:default');
+    calipso.defaultTheme = app.config.get('theme:default');
 
     app.use(express.bodyParser());
     // Pause requests if they were not parsed to allow PUT and POST with custom mime types
@@ -231,9 +231,11 @@ function bootApplication(cluster, next) {
       migrate2pbkdf2:app.config.get('server:authentication:migrate2pbkdf2')
     };
     if (calipso.auth.password === undefined) {
+      app.config.set('server:authentication:password', true);
       calipso.auth.password = true;
     }
     if (calipso.auth.migrate2pbkdf2 === undefined) {
+      app.config.set('server:authentication:migrate2pbkdf2', false);
       calipso.auth.migrate2pbkdf2 = false;
     }
 

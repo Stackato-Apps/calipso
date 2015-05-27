@@ -8,7 +8,7 @@ var rootpath = process.cwd() + '/',
   calipso = require(path.join(rootpath, 'lib/calipso')),
   Query = require("mongoose").Query,
   utils = require('connect').utils,
-	sanitizer = require('sanitizer'),
+  sanitizer = require('sanitizer'),
   merge = utils.merge;
 
 exports = module.exports = {
@@ -184,21 +184,21 @@ function getContent(req, options, next) {
 
         var text = c.get(options.property) || req.t("Invalid content property: {property}", {property:options.property});
         if (options.clickEdit && req.session && req.session.user && req.session.user.isAdmin) {
-          text = "<span title='" + req.t("Double click to edit content block ...") + "' class='content-block' id='" + c._id + "'>" +
-            text + "</span>";
+          text = "<div title='" + req.t("Double click to edit content block ...") + "' class='content-block' id='" + c._id + "'>" +
+            text + "</div>";
         }
-				text = sanitizer.sanitize(text);
-
+        // Don't sanitize the content of the actual post.
+        text = sanitizer.sanitize(text, function uri_policy(uri) { return uri; });
         next(null, text);
 
       } else {
-				// Sanitize strings
-				var prop;
-				for (var prop in c) {
-					if (typeof c[prop] === 'string') {
-						c[prop] = sanitizer.sanitize(c[prop]);
-					}
-				}
+        // Sanitize strings
+        var prop;
+        for (var prop in c) {
+          if (typeof c[prop] === 'string') {
+            c[prop] = sanitizer.sanitize(c[prop], function uri_policy(uri) { return uri; });
+          }
+        }
 
         // Just return the object
         next(null, c);
@@ -225,15 +225,15 @@ function contentForm() {
           {label:'Type', name:'content[contentType]', type:'select', options:function () {
             return calipso.data.contentTypes
           }, description:'Select the type, this impacts custom fields and page display.'},
-          {label:'Teaser', name:'content[teaser]', type:'textarea', description:'Enter some short text that describes the content, appears in lists.', placeholder:escape("<p>In this article, learn how to... </p>")},
-          {label:'Content', name:'content[content]', type:'textarea', description:'Enter the full content text.', required:true, placeholder:escape("<h1>Article Title</h1><p>Insert some content in HTML here.  Remember that your content will already be placed inside an article.</p><section id='1'><h1>Section 1</h1><p>More content Here</p></section>")}
+          {label:'Teaser', name:'content[teaser]', type:'textarea', description:'Enter some short text that describes the content, appears in lists.', placeholder:calipso.utils.escapeHtmlQuotes("<p>In this article, learn how to... </p>")},
+          {label:'Content', name:'content[content]', type:'textarea', description:'Enter the full content text.', required:true, placeholder:calipso.utils.escapeHtmlQuotes("<h1>Article Title</h1><p>Insert some content in HTML here.  Remember that your content will already be placed inside an article.</p><section id='1'><h1>Section 1</h1><p>More content Here</p></section>")}
         ]
       },
       {
         id:'form-section-category',
         label:'Categorisation',
         fields:[
-          {label:'Taxonomy', name:'content[taxonomy]', type:'text', description:'Enter the menu heirarchy, e.g. "welcome/about"', placeholder:"welcome/about", required:true},
+          {label:'Taxonomy', name:'content[taxonomy]', type:'text', description:'Enter the menu heirarchy, e.g. "welcome/about"', placeholder:"welcome/about"},
           {label:'Tags', name:'content[tags]', type:'text', description:'Enter comma-delimited tags to help manage this content.', placeholder:"tutorials,photography,cooking,how-to,classics"}
         ]
       },
@@ -313,7 +313,7 @@ function createContent(req, res, template, block, next) {
                 // To the form
                 req.flash('error', req.t('Could not save content because {msg}.', {msg:err.message}));
                 if (res.statusCode != 302) {
-                  res.redirect('/content/new?type=' + form.content.contentType);
+                  res.redirect('/content/new?type=' + encodeURIComponent(form.content.contentType));
                 }
                 next();
               } else {
@@ -325,7 +325,7 @@ function createContent(req, res, template, block, next) {
                   if (returnTo) {
                     res.redirect(returnTo);
                   } else {
-                    res.redirect('/content/show/' + c._id);
+                    res.redirect('/content/show/' + encodeURIComponent(c._id));
                   }
                   next();
                 });
@@ -631,7 +631,7 @@ function updateContent(req, res, template, block, next) {
                         res.redirect(returnTo);
                       } else {
                         // use the reference to the originally id deifned by req.moduleParams.id
-                        res.redirect('/content/show/' + id);
+                        res.redirect('/content/show/' + encodeURIComponent(id));
                       }
                       next();
                     });
@@ -680,7 +680,7 @@ function showAliasedContent(req, res, template, block, next) {
       if (err || !content) {
         // Create content if it doesn't exist
         if (req.session.user && req.session.user.isAdmin) {
-          res.redirect("/content/new?alias=" + alias + "&type=Article") // TODO - make this configurable
+          res.redirect("/content/new?alias=" + encodeURIComponent(alias) + "&type=Article") // TODO - make this configurable
         } else {
           res.statusCode = 404;
         }
@@ -693,7 +693,7 @@ function showAliasedContent(req, res, template, block, next) {
             next(err);
           } else {
             // Add the user display details to content
-            content.set('displayAuthor', userDetails);
+            content.displayAuthor = userDetails;
             showContent(req, res, template, block, next, err, content, format);
           }
         });
@@ -736,7 +736,7 @@ function showContentByID(req, res, template, block, next) {
           next(err);
         } else {
           // Add the user display details to content
-          content.set('displayAuthor', userDetails);
+          content.displayAuthor = userDetails;
           showContent(req, res, template, block, next, err, content, format);
         }
 
@@ -788,7 +788,7 @@ function showContent(req, res, template, block, next, err, content, format) {
       template = calipso.theme.cache.contentTypes[content.contentType] && calipso.theme.cache.contentTypes[content.contentType].view ? calipso.theme.cache.contentTypes[content.contentType].view : template;
 
     }
-    calipso.theme.renderItem(req, res, template, block, {content:content.toObject()}, next);
+    calipso.theme.renderItem(req, res, template, block, {content:content}, next);
 
   }
 
@@ -1006,27 +1006,32 @@ function install(next) {
     ac = new Content(calipso.lib._.extend(defaults, about)),
     art = new Content(calipso.lib._.extend(defaults, article));
 
+  function saveContent(content) {
+    return function (cb) {
+      Content.find({alias:content.alias}).sort('-created').find(function (err, contentc) {
+        if (err) return cb(err);
+        if (!contentc || contentc.length === 0) {
+          calipso.e.pre_emit('CONTENT_UPDATE', content, function (contentc) {
+            content.save(function (err) {
+              if (err) return cb(err);
+              calipso.e.post_emit('CONTENT_UPDATE', content, cb);
+            });
+          });
+        } else {
+          cb();
+        }
+      });
+    };
+  }
   calipso.lib.async.parallel([
-    function (cb) {
-      wc.save(cb)
-    },
-    function (cb) {
-      ac.save(cb)
-    },
-    function (cb) {
-      art.save(cb)
-    }
+    saveContent(wc),
+    saveContent(ac),
+    saveContent(art)
   ],
   function (err) {
-
-    // Allow event to fire
-    calipso.e.post_emit('CONTENT_UPDATE', art, function (artc) {
-    });
-
     // Done
     calipso.info("Content module installed ... ");
     next();
-
   });
 
 }

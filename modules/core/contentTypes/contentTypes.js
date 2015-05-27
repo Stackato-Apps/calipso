@@ -58,6 +58,7 @@ function init(module, app, next) {
   calipso.e.addEvent('CONTENT_TYPE_CREATE');
   calipso.e.addEvent('CONTENT_TYPE_UPDATE');
   calipso.e.addEvent('CONTENT_TYPE_DELETE');
+  calipso.e.addEvent('CONTENT_TYPE_MAP_FIELDS');
 
   // Register event listeners
   calipso.e.post('CONTENT_TYPE_CREATE', module.name, storeContentTypes);
@@ -92,12 +93,13 @@ function init(module, app, next) {
   // Cache the content types in the calipso.data object
   if (app.config.get('installed')) {
     storeContentTypes(null, null, function () {
+      module.initialised = true;
+      next();
     });
+  } else {
+    module.initialised = true;
+    next();
   }
-
-  module.initialised = true;
-  next();
-
 }
 
 /**
@@ -105,24 +107,29 @@ function init(module, app, next) {
  * @returns
  */
 function install(next) {
-
   // Create the default content types
   var ContentType = calipso.db.model('ContentType');
-
+  function saveItem(item, cb) {
+    ContentType.findOne({contentType:item.contentType}, function (err, ct) {
+      if (err) { return cb(err); }
+      if (ct) { return cb(); }
+      item.save(cb);
+    });
+  }
+  var article = new ContentType({contentType:'Article',
+    description:'Standard page type used for most content.',
+    layout:'default',
+    ispublic:true
+  });
+  var block = new ContentType({contentType:'Block Content',
+    description:'Content that is used to construct other pages in a page template via the getContent call, not visibile in the taxonomy or tag cloud.',
+    layout:'default',
+    ispublic:false
+  });
   calipso.lib.step(
     function createDefaults() {
-      var c = new ContentType({contentType:'Article',
-        description:'Standard page type used for most content.',
-        layout:'default',
-        ispublic:true
-      });
-      c.save(this.parallel());
-      var c = new ContentType({contentType:'Block Content',
-        description:'Content that is used to construct other pages in a page template via the getContent call, not visibile in the taxonomy or tag cloud.',
-        layout:'default',
-        ispublic:false
-      });
-      c.save(this.parallel());
+      saveItem(article, this.parallel());
+      saveItem(block, this.parallel());
     },
     function allDone(err) {
       if (err) {
@@ -154,7 +161,7 @@ var contentTypeForm = {
       {label:'Is Public', name:'contentType[ispublic]', type:'select', options:["Yes", "No"], description:"Public content types appear in lists of content; private types are usually used as components in other pages."}
     ]},
     {id:'type-custom-fields', label:'Custom Fields', fields:[
-      {label:'Custom Fields', name:'contentType[fields]', type:'json', description:"Define any custom fields using the Calipso form language, see the help below.", placeholder:"Custom fields here >>"}
+      {label:'Custom Fields Definition', name:'contentType[fields]', type:'json', description:"Define any custom fields using the Calipso form language, see the help below.", placeholder:"Custom fields here >>"}
     ]},
     {id:'type-custom-templates', label:'Custom Templates', fields:[
       {label:'Template Language', name:'contentType[templateLanguage]', type:'select', options:[
@@ -284,7 +291,16 @@ function updateContentType(req, res, template, block, next) {
       ContentType.findById(id, function (err, c) {
         if (!err && c) {
 
+          var fields = c.fields,
+            updatedFields = fields,
+            formData = {form: form, json: ''};
+          calipso.e.pre_emit('CONTENT_TYPE_MAP_FIELDS', formData, function (formData) {
+            updatedFields = formData.json;
+          });
           calipso.form.mapFields(form.contentType, c);
+          if (c.fields == fields && updatedFields != fields) {
+            c.fields = updatedFields;
+          }
           c.ispublic = form.contentType.ispublic === "Yes" ? true : false;
           c.updated = new Date();
 
@@ -295,12 +311,12 @@ function updateContentType(req, res, template, block, next) {
                 req.flash('error', req.t('Could not update content type because {msg}.', {msg:err.message}));
                 if (res.statusCode != 302) {
                   // Don't redirect if we already are, multiple errors
-                  res.redirect('/content/type/edit/' + id);
+                  res.redirect('/content/type/edit/' + encodeURIComponent(id));
                 }
                 next();
               } else {
                 calipso.e.post_emit('CONTENT_TYPE_UPDATE', c, function (c) {
-                  res.redirect('/content/type/show/' + id);
+                  res.redirect('/content/type/show/' + encodeURIComponent(id));
                   next();
                 });
               }
@@ -390,7 +406,7 @@ function listContentType(req, res, template, block, next) {
     var total = count;
 
     ContentType.find(query)
-      .sort('contentType', 1)
+      .sort('contentType')
       .find(function (err, contents) {
 
         // Render the item into the response
@@ -489,7 +505,7 @@ function storeContentTypes(event, contentType, next) {
   delete calipso.data.contentTypes;
   calipso.data.contentTypes = [];
 
-  ContentType.find({}).sort('contentType', 1).find(function (err, types) {
+  ContentType.find({}).sort('contentType').find(function (err, types) {
     if (err || !types) {
 
       // Don't throw error, just pass back failure.
@@ -497,7 +513,6 @@ function storeContentTypes(event, contentType, next) {
       return next(contentType);
 
     } else {
-
       types.forEach(function (type) {
 
         calipso.data.contentTypes.push(type.contentType);

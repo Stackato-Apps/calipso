@@ -64,6 +64,8 @@ function init(module, app, next) {
       // Load roles into calipso data
       if (app.config.get('installed')) {
         storeRoles(null, null, next);
+      } else {
+        next(null);
       }
 
     });
@@ -87,7 +89,7 @@ function storeRoles(event, data, next) {
   calipso.data.roleArray = [];
   calipso.data.roles = {};
 
-  Role.find({}).sort('name', 1).find(function (err, roles) {
+  Role.find({}).sort('name').find(function (err, roles) {
 
     if (err || !roles) {
       // Don't throw error, just pass back failure.
@@ -247,12 +249,12 @@ function updateRole(req, res, template, block, next) {
                 req.flash('error', req.t('Could not update role because {msg}.', {msg:err.message}));
                 if (res.statusCode != 302) {
                   // Don't redirect if we already are, multiple errors
-                  res.redirect('/user/role/edit/' + id);
+                  res.redirect('/user/role/edit/' + encodeURIComponent(id));
                 }
                 next();
               } else {
                 calipso.e.post_emit('USER_ROLE_UPDATE', c, function (c) {
-                  res.redirect('/user/role/show/' + id);
+                  res.redirect('/user/role/show/' + encodeURIComponent(id));
                   next();
                 });
               }
@@ -397,30 +399,42 @@ function install(next) {
 
       var self = this;
 
-      // Create default roles
-      var r = new Role({
-        name:'Guest',
-        description:'Guest account',
-        isAdmin:false,
-        isDefault:true
+      Role.findOne({name:'Guest'}, function (err, item) {
+        // Create default roles
+        if (item != null)
+          return self.parallel()(null);
+        var r = new Role({
+          name:'Guest',
+          description:'Guest account',
+          isAdmin:false,
+          isDefault:true
+        });
+        r.save(self.parallel());
       });
-      r.save(self.parallel());
 
-      var r = new Role({
-        name:'Contributor',
-        description:'Able to create and manage own content items linked to their own user profile area.',
-        isAdmin:false,
-        isDefault:false
+      Role.findOne({name:'Contributor'}, function (err, item) {
+        if (item)
+          return self.parallel()(null);
+        var r = new Role({
+          name:'Contributor',
+          description:'Able to create and manage own content items linked to their own user profile area.',
+          isAdmin:false,
+          isDefault:false
+        });
+        r.save(self.parallel());
       });
-      r.save(self.parallel());
 
-      var r = new Role({
-        name:'Administrator',
-        description:'Able to manage the entire site.',
-        isAdmin:true,
-        isDefault:false
+      Role.findOne({name:'Administrator'}, function (err, item) {
+        if (item)
+          return self.parallel()(null);
+        var r = new Role({
+          name:'Administrator',
+          description:'Able to manage the entire site.',
+          isAdmin:true,
+          isDefault:false
+        });
+        r.save(self.parallel());
       });
-      r.save(self.parallel());
 
     },
     function allDone(err) {
