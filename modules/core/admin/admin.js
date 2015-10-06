@@ -302,7 +302,7 @@ function installWelcome(req, res, next) {
 
   var installPassword = {id:'install-welcome-form', title:'', type:'form', method:'POST', action:'/admin/install',
     fields:[
-      {label:'Installation Password', name:'installPassword', cls:'database-uri', type:'text', description:'Enter the Installation Password output by calipso during startup. Check log file.', required:true},
+      {label:'Installation Password', name:'installPassword', cls:'database-uri', type:'text', value:installPass, description:'Enter the Installation Password output by calipso during startup. Check log file.', required:true},
       {label:'', name:'installStep', type:'hidden'}
     ],
     buttons:[]}; // Submitted via template
