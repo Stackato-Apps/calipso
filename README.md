@@ -16,6 +16,10 @@ you to start.
 
 [![Build Status](https://travis-ci.org/cliftonc/calipso.png)](https://travis-ci.org/cliftonc/calipso)
 
+### Deploy to HPE Helion Stackato
+
+    stackato push -n
+
 ### Quick Install
 
 If you want to try it out as quickly as possible, please install
