@@ -1,6 +1,6 @@
 applications:
 - name: calipso
-  mem: 128M
+  memory: 128M
   services:
     ${name}-db:
       type: mongodb
